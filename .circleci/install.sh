@@ -51,7 +51,7 @@ create_kind_cluster() {
     echo "Cleanup old kind clusters ..."
     cleanup_cluster
 
-    kind create cluster --name "${CLUSTER_NAME}" --config "${REPO_ROOT}"/.circleci/kind-config.yaml --image "kindest/node:${K8S_VERSION}"
+    kind create cluster --name "${CLUSTER_NAME}" --config "${WORKDIR}"/.circleci/kind-config.yaml --image "kindest/node:${K8S_VERSION}"
 
     docker_exec mkdir -p /root/.kube
 
