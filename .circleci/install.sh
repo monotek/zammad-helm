@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+${KUBECONFIG}#!/usr/bin/env bash
 #
 # install zammad in kubernetes kind
 #
@@ -6,107 +6,118 @@
 set -o errexit
 set -o pipefail
 
-KUBERNETES_VERSIONS=('v1.11.3' 'v1.12.3')
+KUBERNETES_VERSIONS=('v1.11.3' 'v1.12.3' 'v1.13.2')
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKDIR="/workdir"
+CLUSTER_NAME="chart-testing"
 
-run_kind() {
-    echo "Download kind binary..."
-    docker run --rm -it -v "$(pwd)":/go/bin golang go get sigs.k8s.io/kind && sudo mv kind /usr/local/bin/
 
-    echo "Download kubectl..."
-    curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/"${K8S_VERSION}"/bin/linux/amd64/kubectl
-    chmod +x kubectl
-    sudo mv kubectl /usr/local/bin/
+run_ct_container() {
+    echo 'Running ct container...'
+
+    docker run --rm --interactive --detach --network host --name ct \
+        --volume "${REPO_ROOT}/.circleci/ct.yaml:/etc/ct/ct.yaml" \
+        --volume "${REPO_ROOT}:${WORKDIR}" \
+        --workdir ${WORKDIR} \
+        "${CHART_TESTING_IMAGE}:${CHART_TESTING_TAG}" \
+        cat
     echo
-
-    echo "Cleanup old kind clusters ..."
-    cleanup
-
-    echo "Create Kubernetes cluster with kind..."
-    kind create cluster --image=kindest/node:"$K8S_VERSION"
-
-    echo "Export kubeconfig..."
-    # shellcheck disable=SC2155
-    export KUBECONFIG="$(kind get kubeconfig-path)"
-    echo
-
-    echo "Ensure the apiserver is responding..."
-    kubectl cluster-info
-    echo
-
-    echo "Wait for Kubernetes to be up and ready..."
-    JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'
-    until kubectl get nodes -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do
-      sleep 1;
-    done
-    echo
-}
-
-install_tiller() {
-    # Install Tiller with RBAC
-    kubectl -n kube-system create sa tiller
-    kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
-    docker exec "$config_container_id" helm init --service-account tiller
-    echo "Wait for Tiller to be up and ready..."
-    until kubectl -n kube-system get pods 2>&1 | grep -w "tiller-deploy"  | grep -w "1/1"; do
-      sleep 1;
-    done
-    echo
-}
-
-install_hostpath-provisioner() {
-     # kind doesn't support Dynamic PVC provisioning yet, this one of ways to get it working
-     # https://github.com/rimusz/charts/tree/master/stable/hostpath-provisioner
-
-     # delete the default storage class
-     kubectl delete storageclass standard
-
-     echo "Install Hostpath Provisioner..."
-     docker exec "$config_container_id" helm repo add rimusz https://charts.rimusz.net
-     docker exec "$config_container_id" helm repo update
-     docker exec "$config_container_id" helm upgrade --install hostpath-provisioner --namespace kube-system rimusz/hostpath-provisioner
-     echo
 }
 
 cleanup() {
+    echo 'Removing ct container...'
+    docker kill ct > /dev/null 2>&1
+
+    echo 'Done!'
+}
+
+cleanup_cluster() {
   for CLUSTER in $(kind get clusters); do
     kind delete cluster "${CLUSTER}"
   done
 }
 
-main() {
-    echo "Starting kind ..."
-    echo
-    run_kind
-
-    local config_container_id
-    config_container_id=$(docker run -it -d -v "${REPO_ROOT}:${WORKDIR}" --workdir "${WORKDIR}" "$CHART_TESTING_IMAGE:$CHART_TESTING_TAG" cat)
-
-    # shellcheck disable=SC2064
-    trap "docker rm -f $config_container_id > /dev/null" EXIT
-
-    # Get kind container IP
-    kind_container_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kind-1-control-plane)
-    # Copy kubeconfig file
-    docker exec "$config_container_id" mkdir /root/.kube
-    docker cp "$KUBECONFIG" "$config_container_id:/root/.kube/config"
-    # Update in kubeconfig from localhost to kind container IP
-    docker exec "$config_container_id" sed -i "s/localhost:.*/$kind_container_ip:6443/g" /root/.kube/config
-
-    # Install Tiller with RBAC
-    install_tiller
-
-    # Install hostpath-provisioner for Dynammic PVC provisioning
-    install_hostpath-provisioner
-
-    # shellcheck disable=SC2086
-    docker exec "$config_container_id" ct install --config=${WORKDIR}/.circleci/ct.yaml
-
-    echo "Done Testing!"
+docker_exec() {
+    docker exec --interactive ct "$@"
 }
 
-if [ "${CIRCLECI}" == 'true' ] && [ -n "${CIRCLE_PULL_REQUEST}" ]; then
+create_kind_cluster() {
+    echo 'Installing kind...'
+
+    curl -sSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+    chmod +x kind
+    sudo mv kind /usr/local/bin/kind
+
+    echo "Cleanup old kind clusters ..."
+    cleanup_cluster
+
+    kind create cluster --name "${CLUSTER_NAME}" --config "${REPO_ROOT}"/.circleci/kind-config.yaml --image "kindest/node:${K8S_VERSION}"
+
+    docker_exec mkdir -p /root/.kube
+
+    echo 'Copying kubeconfig to container...'
+    local KUBECONFIG
+    KUBECONFIG="$(kind get kubeconfig-path --name "${CLUSTER_NAME}")"
+    docker cp "${KUBECONFIG}" ct:/root/.kube/config
+
+    docker_exec kubectl cluster-info
+    echo
+
+    echo -n 'Waiting for cluster to be ready...'
+    until ! grep --quiet 'NotReady' <(docker_exec kubectl get nodes --no-headers); do
+        printf '.'
+        sleep 1
+    done
+
+    echo '✔︎'
+    echo
+
+    docker_exec kubectl get nodes
+    echo
+
+    echo 'Cluster ready!'
+    echo
+}
+
+install_tiller() {
+    echo 'Installing Tiller...'
+    docker_exec kubectl --namespace kube-system create sa tiller
+    docker_exec kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+    docker_exec helm init --service-account tiller --upgrade --wait
+    echo
+}
+
+install_hostpath-provisioner() {
+    # kind doesn't support Dynamic PVC provisioning yet, this is one way to get it working
+    # https://github.com/rimusz/charts/tree/master/stable/hostpath-provisioner
+
+    echo 'Installing hostpath-provisioner...'
+
+    # Remove default storage class. Will be recreated by hostpath -provisioner
+    docker_exec kubectl delete storageclass standard
+
+    docker_exec helm repo add rimusz https://charts.rimusz.net
+    docker_exec helm repo update
+    docker_exec helm install rimusz/hostpath-provisioner --name hostpath-provisioner --namespace kube-system --wait
+    echo
+}
+
+install_charts() {
+    docker_exec ct install --config=${WORKDIR}/.circleci/ct.yaml
+    echo
+}
+
+main() {
+    run_ct_container
+    trap cleanup EXIT
+
+    create_kind_cluster
+    install_tiller
+    install_hostpath-provisioner
+    install_charts
+}
+
+if [ -n "${CIRCLE_PULL_REQUEST}" ]; then
   for K8S_VERSION in "${KUBERNETES_VERSIONS[@]}"; do
     echo -e "\\nTesting in Kubernetes ${K8S_VERSION}\\n"
     main
