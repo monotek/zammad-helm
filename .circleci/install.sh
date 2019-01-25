@@ -1,4 +1,4 @@
-${KUBECONFIG}#!/usr/bin/env bash
+#!/usr/bin/env bash
 #
 # install zammad in kubernetes kind
 #
