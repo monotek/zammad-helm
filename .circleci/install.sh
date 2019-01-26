@@ -14,9 +14,9 @@ DOCKER_NAME="ct"
 
 
 run_ct_container() {
-    echo 'Running ct container...'
+    echo "Running ${DOCKER_NAME} container..."
 
-    docker run --rm --interactive --detach --network host --name ct \
+    docker container run --rm --interactive --detach --network host --name "${DOCKER_NAME}" \
         --volume "${REPO_ROOT}/.circleci/ct.yaml:/etc/ct/ct.yaml" \
         --volume "${REPO_ROOT}:${WORKDIR}" \
         --workdir ${WORKDIR} \
@@ -29,7 +29,6 @@ cleanup() {
     echo "Removing ${DOCKER_NAME} container..."
 
     docker container kill "${DOCKER_NAME}" > /dev/null 2>&1
-    docker container rm --force -v "${DOCKER_NAME}"
 
     echo 'Done!'
 }
