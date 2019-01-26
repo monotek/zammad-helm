@@ -10,6 +10,7 @@ KUBERNETES_VERSIONS=('v1.11.3' 'v1.12.3' 'v1.13.2')
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKDIR="/workdir"
 CLUSTER_NAME="chart-testing"
+DOCKER_NAME="ct"
 
 
 run_ct_container() {
@@ -25,15 +26,16 @@ run_ct_container() {
 }
 
 cleanup() {
-    echo 'Removing ct container...'
-    docker kill ct > /dev/null 2>&1
-    docker rm --force -v ct
+    echo 'Removing ${DOCEKR_NAME} container...'
+
+    docker container kill "${DOCKER_NAME}" > /dev/null 2>&1
+    docker container rm --force -v "${DOCKER_NAME}"
 
     echo 'Done!'
 }
 
 docker_exec() {
-    docker exec --interactive ct "$@"
+    docker container exec --interactive ct "$@"
 }
 
 create_kind_cluster() {
@@ -102,7 +104,7 @@ install_charts() {
 cleanup_cluster() {
   for CLUSTER in $(kind get clusters); do
     echo "delete old cluster ${CLUSTER}"
-    kind delete cluster "${CLUSTER}"
+    kind delete cluster --name "${CLUSTER}"
   done
 }
 
