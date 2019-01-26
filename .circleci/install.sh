@@ -31,12 +31,6 @@ cleanup() {
     echo 'Done!'
 }
 
-cleanup_cluster() {
-  for CLUSTER in $(kind get clusters); do
-    kind delete cluster "${CLUSTER}"
-  done
-}
-
 docker_exec() {
     docker exec --interactive ct "$@"
 }
@@ -47,9 +41,6 @@ create_kind_cluster() {
     curl -sSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
     chmod +x kind
     sudo mv kind /usr/local/bin/kind
-
-    echo "Cleanup old kind clusters ..."
-    cleanup_cluster
 
     kind create cluster --name "${CLUSTER_NAME}" --config "${REPO_ROOT}"/.circleci/kind-config.yaml --image "kindest/node:${K8S_VERSION}"
 
@@ -115,6 +106,7 @@ main() {
     install_tiller
     install_hostpath-provisioner
     install_charts
+    cleanup
 }
 
 if [ -n "${CIRCLE_PULL_REQUEST}" ]; then
