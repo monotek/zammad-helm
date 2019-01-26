@@ -99,16 +99,23 @@ install_charts() {
     echo
 }
 
-main() {
-    run_ct_container
-    trap cleanup EXIT
+cleanup_cluster() {
+  for CLUSTER in $(kind get clusters); do
+    echo "delete old ${CLUSTER}"
+    kind delete cluster "${CLUSTER}"
+  done
+}
 
+main() {
+    cleanup_cluster
     create_kind_cluster
     install_tiller
     install_hostpath-provisioner
     install_charts
-    cleanup
 }
+
+run_ct_container
+trap cleanup EXIT
 
 if [ -n "${CIRCLE_PULL_REQUEST}" ]; then
   for K8S_VERSION in "${KUBERNETES_VERSIONS[@]}"; do
