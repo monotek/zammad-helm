@@ -26,7 +26,7 @@ run_ct_container() {
 }
 
 cleanup() {
-    echo 'Removing ${DOCEKR_NAME} container...'
+    echo "Removing ${DOCKER_NAME} container..."
 
     docker container kill "${DOCKER_NAME}" > /dev/null 2>&1
     docker container rm --force -v "${DOCKER_NAME}"
