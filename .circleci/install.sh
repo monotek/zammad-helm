@@ -102,10 +102,12 @@ install_charts() {
 }
 
 cleanup_cluster() {
-  for CLUSTER in $(kind get clusters); do
-    echo "delete old cluster ${CLUSTER}"
-    kind delete cluster --name "${CLUSTER}"
-  done
+  if [ -n "$(kind get clusters)" ]; then
+    for CLUSTER in $(kind get clusters); do
+      echo "delete old cluster ${CLUSTER}"
+      kind delete cluster --name "${CLUSTER}"
+    done
+  fi
 }
 
 main() {
