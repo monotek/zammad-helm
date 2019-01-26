@@ -27,7 +27,7 @@ run_ct_container() {
 cleanup() {
     echo 'Removing ct container...'
     docker kill ct > /dev/null 2>&1
-    docker rm ct
+    docker rm --force -v ct
 
     echo 'Done!'
 }
@@ -101,13 +101,14 @@ install_charts() {
 
 cleanup_cluster() {
   for CLUSTER in $(kind get clusters); do
-    echo "delete old ${CLUSTER}"
+    echo "delete old cluster ${CLUSTER}"
     kind delete cluster "${CLUSTER}"
   done
 }
 
 main() {
     cleanup_cluster
+    cleanup
     create_kind_cluster
     install_tiller
     install_hostpath-provisioner
