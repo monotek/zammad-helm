@@ -51,7 +51,7 @@ create_kind_cluster() {
     echo 'Copying kubeconfig to container...'
     local KUBECONFIG
     KUBECONFIG="$(kind get kubeconfig-path --name "${CLUSTER_NAME}")"
-    docker cp "${KUBECONFIG}" ct:/root/.kube/config
+    docker cp "${KUBECONFIG}" "${DOCKER_NAME}":/root/.kube/config
 
     docker_exec kubectl cluster-info
     echo
@@ -96,7 +96,7 @@ install_hostpath-provisioner() {
 }
 
 install_charts() {
-    docker_exec ct install --config=${WORKDIR}/.circleci/ct.yaml
+    docker_exec "${DOCKER_NAME}" install --config=${WORKDIR}/.circleci/ct.yaml
     echo
 }
 
@@ -111,7 +111,6 @@ cleanup_cluster() {
 
 main() {
     cleanup_cluster
-    cleanup
     create_kind_cluster
     install_tiller
     install_hostpath-provisioner
