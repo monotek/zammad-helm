@@ -25,7 +25,7 @@ if [ "${CIRCLECI}" == 'true' ] && [ -z "${CIRCLE_PULL_REQUEST}" ]; then
   # get chart version
   CHART_VERSION="$(grep version: "${REPO_ROOT}"/"${CHART_DIR}"/Chart.yaml | sed 's/version: //')"
 
-  # set original file dates
+  # set original file dates of cloned repo
   (
   cd "${REPO_ROOT}"/"${REPO_DIR}" || exit
   while read -r FILE; do
@@ -49,7 +49,7 @@ if [ "${CIRCLECI}" == 'true' ] && [ -z "${CIRCLE_PULL_REQUEST}" ]; then
   # build chart
   helm package "${REPO_ROOT}"/"${CHART_DIR}" --destination "${REPO_ROOT}"/"${REPO_DIR}"
 
-  # build index
+  # build new index.yaml and merge with old one
   helm repo index --merge "${REPO_ROOT}"/"${TMP_DIR}"/index.yaml --url https://"${REPO_DIR}" "${REPO_ROOT}"/"${REPO_DIR}"
 
   # move old charts back into git repo
