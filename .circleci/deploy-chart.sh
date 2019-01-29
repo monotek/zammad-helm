@@ -11,7 +11,7 @@ CHART_REPO="git@github.com:zammad/zammad.github.io.git"
 REPO_DIR="zammad.github.io"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
-if [ "${CIRCLECI}" == 'true' ] && [ -z "${CIRCLE_PULL_REQUEST}" ]; then
+if [ -z "${CIRCLE_PULL_REQUEST}" ]; then
 
   if ! git diff --name-only HEAD~1 | grep -q 'zammad/Chart.yaml'; then
     echo "no chart changes... so no chart build and upload needed... exiting..."
